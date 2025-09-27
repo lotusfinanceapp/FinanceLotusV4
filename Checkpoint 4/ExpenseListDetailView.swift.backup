@@ -1,0 +1,238 @@
+import SwiftUI
+
+// MARK: - Expense List Detail View - VIEW AND MANAGE TRANSACTIONS FOR A CATEGORY
+struct ExpenseListDetailView: View {
+    @ObservedObject var dataManager: BudgetDataManager
+    let category: ExpenseCategory?
+    @State private var showElements = false
+    @Environment(\.presentationMode) var presentationMode
+    
+    // Computed property to get expenses for this category or all expenses
+    private var filteredExpenses: [Expense] {
+        if let category = category {
+            return dataManager.expenses.filter { $0.category == category }
+        } else {
+            return dataManager.expenses
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // === HEADER SECTION ===
+            VStack(spacing: 20) {
+                // Back button and title
+                HStack {
+                    Button(action: {
+                        presentationMode.wrappedValue.dismiss()
+                    }) {
+                        Image(systemName: "arrow.left.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(.colAccent)
+                    }
+                    .opacity(showElements ? 1.0 : 0.0)
+                    .animation(.easeOut(duration: 0.5), value: showElements)
+                    
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 10)
+                
+                // Category header
+                VStack(spacing: 15) {
+                    if let category = category {
+                        Image(systemName: category.icon)
+                            .font(.system(size: 40))
+                            .foregroundColor(category.color)
+                            .opacity(showElements ? 1.0 : 0.0)
+                            .scaleEffect(showElements ? 1.0 : 0.8)
+                            .animation(.easeOut(duration: 0.6), value: showElements)
+                        
+                        Text(category.rawValue)
+                            .font(.title)
+                            .fontWeight(.bold)
+                    } else {
+                        Image(systemName: "list.bullet.rectangle")
+                            .font(.system(size: 40))
+                            .foregroundColor(.colAccent)
+                            .opacity(showElements ? 1.0 : 0.0)
+                            .scaleEffect(showElements ? 1.0 : 0.8)
+                            .animation(.easeOut(duration: 0.6), value: showElements)
+                        
+                        Text("All Transactions")
+                            .font(.title)
+                            .fontWeight(.bold)
+                    }
+                    
+                    Text("\(filteredExpenses.count) transactions")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                }
+                .opacity(showElements ? 1.0 : 0.0)
+                .offset(y: showElements ? 0 : 20)
+                .animation(.easeOut(duration: 0.5).delay(0.1), value: showElements)
+            }
+            .padding(.bottom, 20)
+            
+            // === TRANSACTIONS LIST ===
+            ScrollView {
+                LazyVStack(spacing: 15) {
+                    // Top spacing
+                    Color.clear.frame(height: 10)
+                    
+                    ForEach(Array(filteredExpenses.sorted(by: { $0.date > $1.date }).enumerated()), id: \.element.id) { index, expense in
+                        ExpenseRowView(expense: expense, dataManager: dataManager)
+                            .opacity(showElements ? 1.0 : 0.0)
+                            .offset(y: showElements ? 0 : 20)
+                            .animation(.easeOut(duration: 0.4).delay(Double(index) * 0.1), value: showElements)
+                    }
+                    
+                    // Bottom spacing
+                    Color.clear.frame(height: 100)
+                }
+                .padding(.horizontal)
+            }
+        }
+        .background(Color.colBackground.ignoresSafeArea(.all))
+        .onAppear {
+            showElements = false
+            withAnimation {
+                showElements = true
+            }
+        }
+        .onDisappear {
+            showElements = false
+        }
+    }
+}
+
+// MARK: - Expense Row View with Swipe to Delete
+struct ExpenseRowView: View {
+    let expense: Expense
+    @ObservedObject var dataManager: BudgetDataManager
+    @State private var offset = CGSize.zero
+    @State private var showingDeleteAlert = false
+    
+    var body: some View {
+        HStack(spacing: 15) {
+            // Category icon
+            Image(systemName: expense.category.icon)
+                .font(.title2)
+                .foregroundColor(expense.category.color)
+                .frame(width: 32, height: 32)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                // Amount and note
+                HStack {
+                    Text(String(format: "$%.2f", expense.amount))
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(expense.category.color)
+                    
+                    if !expense.note.isEmpty {
+                        Text("• \(expense.note)")
+                            .font(.body)
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                    }
+                    
+                    Spacer()
+                }
+                
+                // Date
+                Text(expense.date, style: .date)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.colCardBackground)
+                .shadow(color: .black.opacity(0.08), radius: 4, x: 0, y: 2)
+        )
+        .offset(x: offset.width)
+        .background(
+            // Delete button background
+            HStack {
+                Spacer()
+                Button(action: {
+                    showingDeleteAlert = true
+                }) {
+                    Image(systemName: "trash.fill")
+                        .font(.title2)
+                        .foregroundColor(.white)
+                        .frame(width: 60, height: 60)
+                        .background(Color.red)
+                        .cornerRadius(12)
+                }
+                .opacity(offset.width < -20 ? 1.0 : 0.0)
+                .animation(.easeOut(duration: 0.2), value: offset.width)
+            }
+            .padding(.trailing, 10)
+        )
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    if value.translation.width < 0 {
+                        offset.width = value.translation.width
+                    }
+                }
+                .onEnded { value in
+                    withAnimation(.spring()) {
+                        if abs(value.translation.width) > 100 {
+                            // Swipe threshold reached - show delete
+                            offset.width = -80
+                        } else {
+                            // Reset position
+                            offset.width = 0
+                        }
+                    }
+                }
+        )
+        .onTapGesture {
+            // Tap to reset swipe position
+            withAnimation(.spring()) {
+                offset.width = 0
+            }
+        }
+        .alert("Delete Transaction", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) {
+                withAnimation(.spring()) {
+                    offset.width = 0
+                }
+            }
+            Button("Delete", role: .destructive) {
+                deleteExpense()
+            }
+        } message: {
+            Text("Are you sure you want to delete this transaction for $\(String(format: "%.2f", expense.amount))?")
+        }
+    }
+    
+    private func deleteExpense() {
+        withAnimation(.easeOut(duration: 0.3)) {
+            dataManager.deleteExpense(expense)
+        }
+    }
+}
+
+// MARK: - Preview
+#if DEBUG
+struct ExpenseListDetailView_Previews: PreviewProvider {
+    static var previews: some View {
+        let dataManager = BudgetDataManager()
+        dataManager.budget = Budget(amount: 500.0, period: .monthly, dateCreated: Date())
+        dataManager.expenses = [
+            Expense(amount: 25.0, note: "Lunch at cafe", date: Date(), category: .food),
+            Expense(amount: 15.0, note: "Coffee", date: Date().addingTimeInterval(-86400), category: .food),
+            Expense(amount: 30.0, note: "Uber ride", date: Date().addingTimeInterval(-172800), category: .transport),
+            Expense(amount: 12.0, note: "Movie ticket", date: Date().addingTimeInterval(-259200), category: .entertainment)
+        ]
+        return ExpenseListDetailView(dataManager: dataManager, category: .food)
+            .previewDisplayName("Food Category Detail")
+    }
+}
+#endif
