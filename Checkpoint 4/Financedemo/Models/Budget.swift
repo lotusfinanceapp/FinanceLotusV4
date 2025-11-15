@@ -54,8 +54,20 @@ enum SpendingStatus: String, CaseIterable {
 }
 
 // MARK: - Budget Model - CORE BUDGET DATA STRUCTURE
-struct Budget: Codable {
+struct Budget: Codable, Identifiable {
+    let id: UUID
     let amount: Double       // Budget amount (e.g., $100.00)
     let period: BudgetPeriod // Budget time period (daily/weekly/monthly/yearly)
+    let month: Int           // Month (1-12) this budget applies to
+    let year: Int            // Year this budget applies to
     let dateCreated: Date    // When this budget was created
+
+    init(amount: Double, period: BudgetPeriod, month: Int, year: Int, dateCreated: Date = Date()) {
+        self.id = UUID()
+        self.amount = amount
+        self.period = period
+        self.month = month
+        self.year = year
+        self.dateCreated = dateCreated
+    }
 }

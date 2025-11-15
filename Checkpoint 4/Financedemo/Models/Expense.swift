@@ -43,33 +43,71 @@ struct Expense: Codable, Identifiable {
     let note: String        // Optional description (e.g., "Lunch", "Movie ticket")
     let date: Date         // When this expense was logged
     let category: ExpenseCategory // Expense category with color and icon (for backward compatibility)
-    let customCategory: CustomCategory? // New custom category system
-    
-    init(amount: Double, note: String, date: Date, category: ExpenseCategory = .other) {
+    let customCategory: CustomCategory? // New custom category system (deprecated - kept for decoding old data)
+    let categoryId: UUID? // ID reference to the category (new approach)
+    let recurringExpenseId: UUID? // ID of the recurring expense that created this expense (if any)
+
+    init(amount: Double, note: String, date: Date, category: ExpenseCategory = .other, recurringExpenseId: UUID? = nil) {
         self.id = UUID()
         self.amount = amount
         self.note = note
         self.date = date
         self.category = category
         self.customCategory = nil
+        self.categoryId = nil
+        self.recurringExpenseId = recurringExpenseId
     }
-    
-    init(amount: Double, note: String, date: Date, customCategory: CustomCategory) {
+
+    init(amount: Double, note: String, date: Date, customCategory: CustomCategory, recurringExpenseId: UUID? = nil) {
         self.id = UUID()
         self.amount = amount
         self.note = note
         self.date = date
         self.category = .other // Default fallback for backward compatibility
         self.customCategory = customCategory
+        self.categoryId = customCategory.id
+        self.recurringExpenseId = recurringExpenseId
     }
-    
-    // Computed property to get the effective category
-    var effectiveCategory: CustomCategory {
-        if let customCategory = customCategory {
-            return customCategory
-        } else {
-            // Convert old ExpenseCategory to CustomCategory for backward compatibility
-            return category.toCustomCategory()
+
+    init(amount: Double, note: String, date: Date, categoryId: UUID, recurringExpenseId: UUID? = nil) {
+        self.id = UUID()
+        self.amount = amount
+        self.note = note
+        self.date = date
+        self.category = .other
+        self.customCategory = nil
+        self.categoryId = categoryId
+        self.recurringExpenseId = recurringExpenseId
+    }
+
+    // Method to get the effective category with dynamic lookup
+    func effectiveCategory(from categoryManager: CategoryManager) -> CustomCategory {
+        // First try to look up by ID (new approach)
+        if let categoryId = categoryId,
+           let liveCategory = categoryManager.allCategories.first(where: { $0.id == categoryId }) {
+            return liveCategory
         }
+
+        // Fallback to stored customCategory (for old expenses)
+        if let customCategory = customCategory {
+            // Try to find updated version by ID
+            if let updated = categoryManager.allCategories.first(where: { $0.id == customCategory.id }) {
+                return updated
+            }
+            return customCategory
+        }
+
+        // Final fallback to old ExpenseCategory system
+        return category.toCustomCategory()
+    }
+
+    // Backward-compatible computed property for easy access
+    // NOTE: This uses a static CategoryManager, so it won't reflect live updates
+    // Use effectiveCategory(from:) method for dynamic updates
+    var effectiveCategory: CustomCategory {
+        // For backward compatibility, create a temporary CategoryManager
+        // This is not ideal but maintains compatibility with existing code
+        let tempManager = CategoryManager()
+        return effectiveCategory(from: tempManager)
     }
 }
